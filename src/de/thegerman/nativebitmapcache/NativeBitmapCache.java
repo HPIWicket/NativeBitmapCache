@@ -3,6 +3,7 @@ package de.thegerman.nativebitmapcache;
 import java.nio.ByteBuffer;
 
 import android.graphics.Bitmap;
+import android.graphics.Bitmap.Config;
 import android.graphics.BitmapFactory;
 
 import com.squareup.picasso.Cache;
@@ -29,12 +30,13 @@ public class NativeBitmapCache implements Cache {
 
     @Override
     public void set(String key, Bitmap image) {
-        int imageWidth = image.getWidth();
-        int imageHeight = image.getHeight();
+        final int imageWidth = image.getWidth();
+        final int imageHeight = image.getHeight();
+        final Config config = image.getConfig();
         final int imageBytes = imageWidth * imageHeight * 4;
         ByteBuffer imageBuffer = ByteBuffer.allocateDirect(imageBytes);
         image.copyPixelsToBuffer(imageBuffer);
-        nativeStoreImageData(key, imageBuffer, imageWidth, imageHeight);
+        nativeStoreImageData(key, imageBuffer, imageWidth, imageHeight, config.ordinal());
     }
 
     @Override
@@ -44,7 +46,7 @@ public class NativeBitmapCache implements Cache {
 
     private native NativeBitmapCacheEntry nativeGetImageData(String key);
 
-    private native void nativeStoreImageData(String key, ByteBuffer imageBuffer, int imageWidth, int imageHeight);
+    private native void nativeStoreImageData(String key, ByteBuffer imageBuffer, int imageWidth, int imageHeight, int configOrdinal);
 
     private native void nativeClear();
 
