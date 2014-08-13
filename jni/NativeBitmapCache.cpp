@@ -1,37 +1,52 @@
-#include <jni.h>
-#include <jni.h>
-#include <android/log.h>
+#include "de_thegerman_nativebitmapcache_NativeBitmapCache.h"
+
 #include <stdio.h>
 #include <android/bitmap.h>
 #include <cstring>
 #include <unistd.h>
 
-#define  LOG_TAG    "DEBUG"
-#define  LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG,LOG_TAG,__VA_ARGS__)
-#define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
+class JavaClasses {
+	jclass nativeBitmapCacheEntryClass;
+	jmethodID nativeBitmapCacheEntryConstructor;
+	jfieldID nativeBitmapCacheEntrySizeField;
+	jfieldID nativeBitmapCacheEntryHandleField;
+	JNIEnv * jniEnv;
 
-extern "C"
-{
-	JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nativeGetImageData(JNIEnv * env, jobject obj, jobject bitmap);
-	JNIEXPORT void JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nativeStoreImageData(JNIEnv * env, jobject obj, jobject handle);
-	JNIEXPORT void JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nativeClear(JNIEnv * env);
-}
-
-class JniBitmap
-{
 public:
+	JavaClasses(JNIEnv *env) {
+		jniEnv = env;
+		nativeBitmapCacheEntryClass = jniEnv->FindClass("de/thegerman/nativebitmapcache/NativeBitmapCacheEntry");
+		nativeBitmapCacheEntryConstructor = jniEnv->GetMethodID(nativeBitmapCacheEntryClass, "<init>", "()V");
+		nativeBitmapCacheEntryHandleField = jniEnv->GetFieldID(nativeBitmapCacheEntryClass, "handle", "Ljava/nio/ByteBuffer;");
+		nativeBitmapCacheEntrySizeField = jniEnv->GetFieldID(nativeBitmapCacheEntryClass, "size", "I");
+	}
+
+	jobject createNativeBitmapCacheEntry() {
+		return jniEnv->NewObject(nativeBitmapCacheEntryClass, nativeBitmapCacheEntryConstructor, "");
+	}
+
+	void setNativeBitmapCacheEntrySize(jobject nativeBitmapCacheEntryObject, int size) {
+		jniEnv->SetIntField(nativeBitmapCacheEntryObject, nativeBitmapCacheEntrySizeField, size);
+	}
+
+	void setNativeBitmapCacheEntryHandle(jobject nativeBitmapCacheEntryObject, jobject handleObject) {
+		jniEnv->SetObjectField(nativeBitmapCacheEntryObject, nativeBitmapCacheEntryHandleField, handleObject);
+	}
+};
+
+class JniBitmap {
+public:
+	int _storedBitmapPixelsSize;
 	uint32_t* _storedBitmapPixels;
 	AndroidBitmapInfo _bitmapInfo;
-	JniBitmap()
-	{
+	JniBitmap() {
 		_storedBitmapPixels = NULL;
 	}
 };
 
-JNIEXPORT void JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nativeClear(JNIEnv * env, jobject obj, jobject handle)
-{
+JNIEXPORT void JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nativeClear(JNIEnv * env, jobject obj, jobject handle) {
 	JniBitmap* jniBitmap = (JniBitmap*) env->GetDirectBufferAddress(handle);
-	if (jniBitmap->_storedBitmapPixels == NULL)	return;
+	if (jniBitmap->_storedBitmapPixels == NULL) return;
 
 	delete[] jniBitmap->_storedBitmapPixels;
 	jniBitmap->_storedBitmapPixels = NULL;
@@ -39,9 +54,7 @@ JNIEXPORT void JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nat
 }
 
 JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nativeGetImageData(
-		JNIEnv * env, jobject obj, jstring key) {
-
-	// get handle from key
+		JNIEnv * env, jobject obj, jobject handle) {
 
 	JniBitmap* jniBitmap = (JniBitmap*) env->GetDirectBufferAddress(handle);
 	if (jniBitmap->_storedBitmapPixels == NULL) {
@@ -65,8 +78,8 @@ JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_
 			"createBitmap",
 			"(IILandroid/graphics/Bitmap$Config;)Landroid/graphics/Bitmap;");
 	jobject newBitmap = env->CallStaticObjectMethod(bitmapCls,
-			createBitmapFunction, jniBitmap->_bitmapInfo.height,
-			jniBitmap->_bitmapInfo.width, bitmapConfig);
+			createBitmapFunction, jniBitmap->_bitmapInfo.width,
+			jniBitmap->_bitmapInfo.height, bitmapConfig);
 	//
 	// putting the pixels into the new bitmap:
 	//
@@ -86,8 +99,9 @@ JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_
 	return newBitmap;
 }
 
-JNIEXPORT void JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nativeStoreImageData (
-		JNIEnv * env, jobject obj, jstring key, jobject bitmap) {
+JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nativeStoreImageData(
+		JNIEnv * env, jobject obj, jobject bitmap) {
+	JavaClasses* javaClasses = new JavaClasses(env);
 	AndroidBitmapInfo bitmapInfo;
 	uint32_t* storedBitmapPixels = NULL;
 	//LOGD("reading bitmap info...");
@@ -108,15 +122,21 @@ JNIEXPORT void JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nat
 	void* bitmapPixels;
 	if ((ret = AndroidBitmap_lockPixels(env, bitmap, &bitmapPixels)) < 0) {
 		LOGE("AndroidBitmap_lockPixels() failed ! error=%d", ret);
-		return;
+		return NULL;
 	}
 	uint32_t* src = (uint32_t*) bitmapPixels;
 	storedBitmapPixels = new uint32_t[bitmapInfo.height * bitmapInfo.width];
-	int pixelsCount = bitmapInfo.height * bitmapInfo.width;
-	memcpy(storedBitmapPixels, src, sizeof(uint32_t) * pixelsCount);
+	int pixelsDataSize = bitmapInfo.height * bitmapInfo.width
+			* sizeof(uint32_t);
+	memcpy(storedBitmapPixels, src, pixelsDataSize);
 	AndroidBitmap_unlockPixels(env, bitmap);
-	JniBitmap * jniBitmap = new	JniBitmap();
+	JniBitmap * jniBitmap = new JniBitmap();
+	jniBitmap->_storedBitmapPixelsSize = pixelsDataSize;
+	LOGD("_storedBitmapPixelsSize %d", pixelsDataSize);
 	jniBitmap->_bitmapInfo = bitmapInfo;
 	jniBitmap->_storedBitmapPixels = storedBitmapPixels;
-	return env->NewDirectByteBuffer(jniBitmap, 0);
+	jobject nativeBitmapCacheEntryObject = javaClasses->createNativeBitmapCacheEntry();
+	javaClasses->setNativeBitmapCacheEntrySize(nativeBitmapCacheEntryObject, pixelsDataSize);
+	javaClasses->setNativeBitmapCacheEntryHandle(nativeBitmapCacheEntryObject, env->NewDirectByteBuffer(jniBitmap, sizeof(JniBitmap)));
+	return nativeBitmapCacheEntryObject;
 }

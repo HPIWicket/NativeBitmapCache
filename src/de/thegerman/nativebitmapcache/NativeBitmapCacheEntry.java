@@ -1,10 +1,9 @@
 package de.thegerman.nativebitmapcache;
 
+import java.nio.ByteBuffer;
+
 
 public class NativeBitmapCacheEntry {
-    public byte[] imageData;
-    public int configIndex;
-    public int imageWidth;
-    public int imageHeight;
-
+    public ByteBuffer handle;
+    public int size;
 }
