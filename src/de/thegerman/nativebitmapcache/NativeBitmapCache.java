@@ -1,8 +1,6 @@
 package de.thegerman.nativebitmapcache;
 
 import static android.content.Context.ACTIVITY_SERVICE;
-import static android.content.pm.ApplicationInfo.FLAG_LARGE_HEAP;
-import static android.os.Build.VERSION.SDK_INT;
 import static android.os.Build.VERSION_CODES.HONEYCOMB;
 
 import java.nio.ByteBuffer;
@@ -11,8 +9,10 @@ import java.util.Map;
 
 import android.annotation.TargetApi;
 import android.app.ActivityManager;
+import android.app.ActivityManager.MemoryInfo;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.util.Log;
 
 import com.squareup.picasso.Cache;
 public class NativeBitmapCache implements Cache {
@@ -39,13 +39,18 @@ public class NativeBitmapCache implements Cache {
     
     static int calculateMemoryCacheSize(Context context) {
         ActivityManager am = getService(context, ACTIVITY_SERVICE);
-        boolean largeHeap = (context.getApplicationInfo().flags & FLAG_LARGE_HEAP) != 0;
-        int memoryClass = am.getMemoryClass();
-        if (largeHeap && SDK_INT >= HONEYCOMB) {
-          memoryClass = ActivityManagerHoneycomb.getLargeMemoryClass(am);
-        }
-        // Target ~15% of the available heap.
-        return 1024 * 1024 * memoryClass / 7;
+        MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+        am.getMemoryInfo(memoryInfo);
+        long cacheSize = memoryInfo.availMem / 2;
+        Log.d(NativeBitmapCache.class.getSimpleName(), "Calculated cache size: " + cacheSize);
+		return (int) cacheSize;
+//        boolean largeHeap = (context.getApplicationInfo().flags & FLAG_LARGE_HEAP) != 0;
+//        int memoryClass = am.getMemoryClass();
+//        if (largeHeap && SDK_INT >= HONEYCOMB) {
+//          memoryClass = ActivityManagerHoneycomb.getLargeMemoryClass(am);
+//        }
+//        // Target ~15% of the available heap.
+//        return 1024 * 1024 * memoryClass / 7;
       }
 
     public NativeBitmapCache(Context context) {
@@ -86,6 +91,7 @@ public class NativeBitmapCache implements Cache {
     public void set(String key, Bitmap image) {
         synchronized (this) {
         	NativeBitmapCacheEntry newEntry = nativeStoreImageData(image);
+        	if (newEntry == null) return;
             mSize += newEntry.size;
             NativeBitmapCacheEntry previousEntry = mChacheEntries.put(key, newEntry);
             if (previousEntry != null) {
