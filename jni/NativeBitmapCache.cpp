@@ -154,7 +154,7 @@ JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_
 	std::stringstream ss;
 	ss << "NBCE" << savedPages;
 	const char* areaName = ss.str().c_str();
-	int fd = ashmem_create_region(areaName, pixelsDataSize);
+	int fd = ashmem_create_region(NULL, pixelsDataSize);
 	if (fd < 0) {
 		LOGE("ashmem_create_region %s failed ! error=%d", areaName, fd);
 		return NULL;
