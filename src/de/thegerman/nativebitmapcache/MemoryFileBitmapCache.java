@@ -24,7 +24,7 @@ import com.squareup.picasso.Cache;
 
 public class MemoryFileBitmapCache implements Cache {
 
-	private final Map<String, MemoryFileCacheEntry> mChacheEntries;
+	private final Map<String, MemoryFileCacheEntry> mCacheEntries;
 	private final int mMaxSize;
 	private int mSize;
 
@@ -42,20 +42,15 @@ public class MemoryFileBitmapCache implements Cache {
 
 	static int calculateMemoryCacheSize(Context context) {
 		ActivityManager am = getService(context, ACTIVITY_SERVICE);
-		MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
-		am.getMemoryInfo(memoryInfo);
-		long cacheSize = memoryInfo.availMem / 2;
-		Log.d(MemoryFileBitmapCache.class.getSimpleName(),
-				"Calculated cache size: " + cacheSize);
-		return (int) cacheSize;
-		// boolean largeHeap = (context.getApplicationInfo().flags &
-		// FLAG_LARGE_HEAP) != 0;
-		// int memoryClass = am.getMemoryClass();
-		// if (largeHeap && SDK_INT >= HONEYCOMB) {
-		// memoryClass = ActivityManagerHoneycomb.getLargeMemoryClass(am);
-		// }
+//		MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+//		am.getMemoryInfo(memoryInfo);
+//		long cacheSize = memoryInfo.availMem / 2;
+//		Log.d(MemoryFileBitmapCache.class.getSimpleName(),
+//				"Calculated cache size: " + cacheSize);
+//		return (int) cacheSize;
+		 int memoryClass = am.getMemoryClass();
 		// // Target ~15% of the available heap.
-		// return 1024 * 1024 * memoryClass / 7;
+		 return 1024 * 1024 * memoryClass / 7;
 	}
 
 	public MemoryFileBitmapCache(Context context) {
@@ -63,33 +58,39 @@ public class MemoryFileBitmapCache implements Cache {
 	}
 
 	public MemoryFileBitmapCache(int maxSize) {
-		mChacheEntries = new LinkedHashMap<String, MemoryFileCacheEntry>();
+		mCacheEntries = new LinkedHashMap<String, MemoryFileCacheEntry>();
 		mMaxSize = maxSize;
 		mSize = 0;
 	}
 
 	@Override
 	public void clear() {
-		for (MemoryFileCacheEntry entry : mChacheEntries.values()) {
+		for (MemoryFileCacheEntry entry : mCacheEntries.values()) {
 			entry.memoryFile.close();
 		}
-		mChacheEntries.clear();
+		mCacheEntries.clear();
 	}
 
 	@Override
 	public Bitmap get(String key) {
 		synchronized (this) {
-			MemoryFileCacheEntry entry = mChacheEntries.get(key);
+			MemoryFileCacheEntry entry = mCacheEntries.get(key);
 			if (entry != null) {
 				InputStream inputStream = entry.memoryFile.getInputStream();
 				try {
 					byte[] buffer = new byte[entry.size];
 					inputStream.read(buffer);
-					Bitmap image = BitmapFactory.decodeByteArray(buffer, 0,
-							buffer.length);
+					ByteBuffer b = ByteBuffer.allocate(entry.size);
+					b.put(buffer, 0, buffer.length);
+					b.rewind();
+					Bitmap image = Bitmap.createBitmap(entry.width, entry.height, entry.config);
+					image.copyPixelsFromBuffer(b);
 					return image;
 				} catch (Exception e) {
 					e.printStackTrace();
+					mCacheEntries.remove(key);
+					mSize -= entry.size;
+					entry.memoryFile.close();
 					Log.d(getClass().getSimpleName(), "File was purged");
 				} catch (OutOfMemoryError e) {
 					e.printStackTrace();
@@ -124,7 +125,7 @@ public class MemoryFileBitmapCache implements Cache {
 						image.getWidth(), image.getHeight(), memoryFile,
 						image.getConfig());
 				mSize += size;
-				MemoryFileCacheEntry previousEntry = mChacheEntries.put(key,
+				MemoryFileCacheEntry previousEntry = mCacheEntries.put(key,
 						newEntry);
 				if (previousEntry != null) {
 					mSize -= previousEntry.size;
@@ -148,20 +149,20 @@ public class MemoryFileBitmapCache implements Cache {
 			String key;
 			MemoryFileCacheEntry value;
 			synchronized (this) {
-				if (mSize < 0 || (mChacheEntries.isEmpty() && mSize != 0)) {
+				if (mSize < 0 || (mCacheEntries.isEmpty() && mSize != 0)) {
 					throw new IllegalStateException(getClass().getName()
 							+ ".sizeOf() is reporting inconsistent results!");
 				}
 
-				if (mSize <= maxSize || mChacheEntries.isEmpty()) {
+				if (mSize <= maxSize || mCacheEntries.isEmpty()) {
 					break;
 				}
 
-				Map.Entry<String, MemoryFileCacheEntry> toEvict = mChacheEntries
+				Map.Entry<String, MemoryFileCacheEntry> toEvict = mCacheEntries
 						.entrySet().iterator().next();
 				key = toEvict.getKey();
 				value = toEvict.getValue();
-				mChacheEntries.remove(key);
+				mCacheEntries.remove(key);
 				mSize -= value.size;
 				value.memoryFile.close();
 			}
