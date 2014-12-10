@@ -81,6 +81,7 @@ JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_
 	}
 
 	if (ashmem_pin_region(jniBitmap->_bitmapPixelsFd, 0, 0) == ASHMEM_WAS_PURGED) {
+		LOGD("image data was purged. returning null...");
 		return NULL;
 	}
 

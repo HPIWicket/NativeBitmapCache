@@ -41,16 +41,7 @@ public class MemoryFileBitmapCache implements Cache {
 	}
 
 	static int calculateMemoryCacheSize(Context context) {
-		ActivityManager am = getService(context, ACTIVITY_SERVICE);
-//		MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
-//		am.getMemoryInfo(memoryInfo);
-//		long cacheSize = memoryInfo.availMem / 2;
-//		Log.d(MemoryFileBitmapCache.class.getSimpleName(),
-//				"Calculated cache size: " + cacheSize);
-//		return (int) cacheSize;
-		 int memoryClass = am.getMemoryClass();
-		// // Target ~15% of the available heap.
-		 return 1024 * 1024 * memoryClass / 7;
+		return NativeBitmapCache.calculateMemoryCacheSize(context);
 	}
 
 	public MemoryFileBitmapCache(Context context) {
@@ -74,6 +65,7 @@ public class MemoryFileBitmapCache implements Cache {
 	@Override
 	public Bitmap get(String key) {
 		synchronized (this) {
+    	long start = System.currentTimeMillis();
 			MemoryFileCacheEntry entry = mCacheEntries.get(key);
 			if (entry != null) {
 				InputStream inputStream = entry.memoryFile.getInputStream();
@@ -85,6 +77,7 @@ public class MemoryFileBitmapCache implements Cache {
 					b.rewind();
 					Bitmap image = Bitmap.createBitmap(entry.width, entry.height, entry.config);
 					image.copyPixelsFromBuffer(b);
+        	Log.d("BitmapCacheTime", "Performed get in " + (System.currentTimeMillis() - start) + "ms");
 					return image;
 				} catch (Exception e) {
 					e.printStackTrace();

@@ -15,134 +15,141 @@ import android.graphics.Bitmap;
 import android.util.Log;
 
 import com.squareup.picasso.Cache;
+
 public class NativeBitmapCache implements Cache {
 
-    private final Map<String, NativeBitmapCacheEntry> mCacheEntries;
-    private final int mMaxSize;
-    private int mSize;
-    
-    @SuppressWarnings("unchecked")
-    static <T> T getService(Context context, String service) {
-      return (T) context.getSystemService(service);
-    }
-    
-    protected void loadNativeLibrary() {
-      System.loadLibrary("nativebitmapcache-jni");
-      Log.d(NativeBitmapCache.class.getSimpleName(), "Loaded nativebitmapcache-jni");
+	private final Map<String, NativeBitmapCacheEntry> mCacheEntries;
+	private final int mMaxSize;
+	private int mSize;
+
+	@SuppressWarnings("unchecked")
+	static <T> T getService(Context context, String service) {
+		return (T) context.getSystemService(service);
+	}
+
+	protected void loadNativeLibrary() {
+		System.loadLibrary("nativebitmapcache-jni");
+		Log.d(NativeBitmapCache.class.getSimpleName(), "Loaded nativebitmapcache-jni");
+	}
+
+	@TargetApi(HONEYCOMB)
+	private static class ActivityManagerHoneycomb {
+		static int getLargeMemoryClass(ActivityManager activityManager) {
+			return activityManager.getLargeMemoryClass();
+		}
+	}
+
+	static int calculateMemoryCacheSize(Context context) {
+		ActivityManager am = getService(context, ACTIVITY_SERVICE);
+
+		MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+		am.getMemoryInfo(memoryInfo);
+		long cacheSize = memoryInfo.availMem / 2;
+		Log.d(NativeBitmapCache.class.getSimpleName(), "Calculated cache size: " + cacheSize);
+		return (int) cacheSize;
+
+		/*
+		 * int memoryClass = am.getMemoryClass(); // Target ~15% of the available
+		 * heap. return 1024 * 1024 * memoryClass / 7;
+		 */
+	}
+
+	public NativeBitmapCache(Context context) {
+		this(calculateMemoryCacheSize(context));
+	}
+
+	public NativeBitmapCache(int maxSize) {
+		loadNativeLibrary();
+		mCacheEntries = new LinkedHashMap<String, NativeBitmapCacheEntry>();
+		mMaxSize = maxSize;
+		mSize = 0;
+	}
+
+	@Override
+	public void clear() {
+		for (NativeBitmapCacheEntry entry : mCacheEntries.values()) {
+			nativeClear(entry.handle);
+		}
+		mCacheEntries.clear();
+	}
+
+	@Override
+	public Bitmap get(String key) {
+		synchronized (this) {
+			long start = System.currentTimeMillis();
+			NativeBitmapCacheEntry entry = mCacheEntries.get(key);
+			if (entry != null) {
+				Bitmap nativeImageData = nativeGetImageData(entry.handle);
+				if (nativeImageData == null) {
+					mCacheEntries.remove(key);
+					mSize -= entry.size;
+					nativeClear(entry.handle);
+					Log.d("Picasso", "Native image data is null! New currentSize: " + mSize);
+				} else {
+					Log.d("BitmapCacheTime", "Performed get in " + (System.currentTimeMillis() - start) + "ms");
+				}
+				return nativeImageData;
+			}
+		}
+		return null;
+	}
+
+	@Override
+	public int maxSize() {
+		return mMaxSize;
+	}
+
+	@Override
+	public void set(String key, Bitmap image) {
+		synchronized (this) {
+			NativeBitmapCacheEntry newEntry = nativeStoreImageData(image);
+			if (newEntry == null)
+				return;
+			mSize += newEntry.size;
+			NativeBitmapCacheEntry previousEntry = mCacheEntries.put(key, newEntry);
+			if (previousEntry != null) {
+				mSize -= previousEntry.size;
+				nativeClear(previousEntry.handle);
+			}
 		}
 
-		@TargetApi(HONEYCOMB)
-    private static class ActivityManagerHoneycomb {
-      static int getLargeMemoryClass(ActivityManager activityManager) {
-        return activityManager.getLargeMemoryClass();
-      }
-    }
-    
-    static int calculateMemoryCacheSize(Context context) {
-        ActivityManager am = getService(context, ACTIVITY_SERVICE);
-//        MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
-//        am.getMemoryInfo(memoryInfo);
-//        long cacheSize = memoryInfo.availMem / 2;
-//        Log.d(NativeBitmapCache.class.getSimpleName(), "Calculated cache size: " + cacheSize);
-//		return (int) cacheSize;
-        int memoryClass = am.getMemoryClass();
-        // Target ~15% of the available heap.
-        return 1024 * 1024 * memoryClass / 7;
-      }
+		trimToSize(mMaxSize);
+	}
 
-    public NativeBitmapCache(Context context) {
-        this(calculateMemoryCacheSize(context));
-    }
-    
-    public NativeBitmapCache(int maxSize) {
-    	  loadNativeLibrary();
-        mCacheEntries = new LinkedHashMap<String, NativeBitmapCacheEntry>();
-        mMaxSize = maxSize;
-        mSize = 0;
-    }
+	@Override
+	public int size() {
+		return mSize;
+	}
 
-    @Override
-    public void clear() {
-        for (NativeBitmapCacheEntry entry : mCacheEntries.values()) {
-            nativeClear(entry.handle);
-        }
-        mCacheEntries.clear();
-    }
+	private void trimToSize(int maxSize) {
+		Log.d("Picasso", "trimToSize maxSize: " + maxSize + " currentSize: " + mSize);
+		while (true) {
+			String key;
+			NativeBitmapCacheEntry value;
+			synchronized (this) {
+				if (mSize < 0 || (mCacheEntries.isEmpty() && mSize != 0)) {
+					throw new IllegalStateException(getClass().getName() + ".sizeOf() is reporting inconsistent results!");
+				}
 
-    @Override
-    public Bitmap get(String key) {
-        synchronized (this) {
-        	NativeBitmapCacheEntry entry = mCacheEntries.get(key);
-            if (entry != null) {
-                Bitmap nativeImageData = nativeGetImageData(entry.handle);
-                if (nativeImageData == null) {
-                	Log.d("Picasso", "Native image data is null! New currentSize: " + mSize);
-                	mCacheEntries.remove(key);
-                	mSize -= entry.size;
-                	nativeClear(entry.handle);
-                }
-								return nativeImageData;
-            }
-        }
-        return null;
-    }
+				if (mSize <= maxSize || mCacheEntries.isEmpty()) {
+					break;
+				}
 
-    @Override
-    public int maxSize() {
-        return mMaxSize;
-    }
+				Map.Entry<String, NativeBitmapCacheEntry> toEvict = mCacheEntries.entrySet().iterator().next();
+				key = toEvict.getKey();
+				value = toEvict.getValue();
+				mCacheEntries.remove(key);
+				mSize -= value.size;
+				nativeClear(value.handle);
+				Log.d("Picasso", "evict entry new currentSize: " + mSize);
+			}
+		}
+	}
 
-    @Override
-    public void set(String key, Bitmap image) {
-        synchronized (this) {
-        	NativeBitmapCacheEntry newEntry = nativeStoreImageData(image);
-        	if (newEntry == null) return;
-            mSize += newEntry.size;
-            NativeBitmapCacheEntry previousEntry = mCacheEntries.put(key, newEntry);
-            if (previousEntry != null) {
-                mSize -= previousEntry.size;
-                nativeClear(previousEntry.handle);
-            }
-        }
+	private native Bitmap nativeGetImageData(ByteBuffer handle);
 
-        trimToSize(mMaxSize);
-    }
+	private native NativeBitmapCacheEntry nativeStoreImageData(Bitmap bitmap);
 
-    @Override
-    public int size() {
-        return mSize;
-    }
-
-    private void trimToSize(int maxSize) {
-    	Log.d("Picasso", "trimToSize maxSize: " + maxSize + " currentSize: " + mSize);
-        while (true) {
-            String key;
-            NativeBitmapCacheEntry value;
-            synchronized (this) {
-                if (mSize < 0 || (mCacheEntries.isEmpty() && mSize != 0)) {
-                    throw new IllegalStateException(
-                            getClass().getName() + ".sizeOf() is reporting inconsistent results!");
-                }
-
-                if (mSize <= maxSize || mCacheEntries.isEmpty()) {
-                    break;
-                }
-                
-                Map.Entry<String, NativeBitmapCacheEntry> toEvict = mCacheEntries.entrySet().iterator().next();
-                key = toEvict.getKey();
-                value = toEvict.getValue();
-                mCacheEntries.remove(key);
-                mSize -= value.size;
-                nativeClear(value.handle);
-              	Log.d("Picasso", "evict entry new currentSize: " + mSize);
-            }
-        }
-    }
-
-    private native Bitmap nativeGetImageData(ByteBuffer handle);
-
-    private native NativeBitmapCacheEntry nativeStoreImageData(Bitmap bitmap);
-
-    private native void nativeClear(ByteBuffer handle);
+	private native void nativeClear(ByteBuffer handle);
 
 }
