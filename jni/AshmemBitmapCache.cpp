@@ -154,8 +154,13 @@ JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_
 	int pixelsDataSize = bitmapInfo.height * bitmapInfo.width * sizeof(uint32_t);
 	std::stringstream ss;
 	ss << "NBCE" << savedPages;
-	const char* areaName = ss.str().c_str();
-	int fd = ashmem_create_region(NULL, pixelsDataSize);
+	const char* areaName;
+	if (savedPages % 2 == 0) {
+		areaName = "nbcSpace1";
+	} else {
+		areaName = "nbcSpace2";
+	}
+	int fd = ashmem_create_region(areaName, pixelsDataSize);
 	if (fd < 0) {
 		LOGE("ashmem_create_region %s failed ! error=%d", areaName, fd);
 		return NULL;
