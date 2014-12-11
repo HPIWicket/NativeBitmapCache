@@ -18,9 +18,9 @@ import com.squareup.picasso.Cache;
 
 public class NativeBitmapCache implements Cache {
 
-	private final Map<String, NativeBitmapCacheEntry> mCacheEntries;
-	private final int mMaxSize;
-	private int mSize;
+	protected final Map<String, NativeBitmapCacheEntry> mCacheEntries;
+	protected final int mMaxSize;
+	protected int mSize;
 
 	@SuppressWarnings("unchecked")
 	static <T> T getService(Context context, String service) {
@@ -121,7 +121,7 @@ public class NativeBitmapCache implements Cache {
 		return mSize;
 	}
 
-	private void trimToSize(int maxSize) {
+	protected void trimToSize(int maxSize) {
 		Log.d("Picasso", "trimToSize maxSize: " + maxSize + " currentSize: " + mSize);
 		while (true) {
 			String key;
@@ -146,10 +146,10 @@ public class NativeBitmapCache implements Cache {
 		}
 	}
 
-	private native Bitmap nativeGetImageData(ByteBuffer handle);
+	protected native Bitmap nativeGetImageData(ByteBuffer handle);
 
-	private native NativeBitmapCacheEntry nativeStoreImageData(Bitmap bitmap);
+	protected native NativeBitmapCacheEntry nativeStoreImageData(Bitmap bitmap);
 
-	private native void nativeClear(ByteBuffer handle);
+	protected native void nativeClear(ByteBuffer handle);
 
 }
