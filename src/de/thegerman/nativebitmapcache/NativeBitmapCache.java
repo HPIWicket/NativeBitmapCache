@@ -40,6 +40,8 @@ public class NativeBitmapCache implements Cache {
 	}
 
 	static int calculateMemoryCacheSize(Context context) {
+		// return Utils.calculateMemoryCacheSize(context);
+		
 		ActivityManager am = getService(context, ACTIVITY_SERVICE);
 
 		MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
@@ -47,7 +49,6 @@ public class NativeBitmapCache implements Cache {
 		long cacheSize = memoryInfo.availMem / 2;
 		Log.d(NativeBitmapCache.class.getSimpleName(), "Calculated cache size: " + cacheSize);
 		return (int) cacheSize;
-
 		/*
 		 * int memoryClass = am.getMemoryClass(); // Target ~15% of the available
 		 * heap. return 1024 * 1024 * memoryClass / 7;
@@ -106,6 +107,8 @@ public class NativeBitmapCache implements Cache {
 			if (newEntry == null)
 				return;
 			mSize += newEntry.size;
+			newEntry.width = image.getWidth();
+			newEntry.height = image.getHeight();
 			NativeBitmapCacheEntry previousEntry = mCacheEntries.put(key, newEntry);
 			if (previousEntry != null) {
 				mSize -= previousEntry.size;

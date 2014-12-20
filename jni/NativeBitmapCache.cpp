@@ -99,6 +99,11 @@ JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_
 	return newBitmap;
 }
 
+JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_AshmemBitmapCache_nativeGetImageDataInBitmap(
+		JNIEnv * env, jobject obj, jobject handle, jobject bitmap) {
+	return Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nativeGetImageData(env, obj, handle);
+}
+
 JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nativeStoreImageData(
 		JNIEnv * env, jobject obj, jobject bitmap) {
 	JavaClasses* javaClasses = new JavaClasses(env);

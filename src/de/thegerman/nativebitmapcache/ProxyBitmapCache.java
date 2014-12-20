@@ -8,7 +8,7 @@ public class ProxyBitmapCache implements Cache {
 	final private Cache mRealCache;
 	
 	public ProxyBitmapCache(Context context) {
-		mRealCache = new AshmemBitmapCache(context); 
+		mRealCache = new PicassoLruCache(context); 
 	}
 
 	@Override

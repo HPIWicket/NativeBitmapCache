@@ -70,8 +70,8 @@ JNIEXPORT void JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nat
     ashmem_unpin_region(fd, 0, 0);
 }
 
-JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nativeGetImageData(
-		JNIEnv * env, jobject obj, jobject handle) {
+JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_AshmemBitmapCache_nativeGetImageDataInBitmap(
+		JNIEnv * env, jobject obj, jobject handle, jobject bitmap) {
 
 	JniBitmap* jniBitmap = (JniBitmap*) env->GetDirectBufferAddress(handle);
 
@@ -85,44 +85,47 @@ JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_
 		return NULL;
 	}
 
-	//
-	//creating a new bitmap to put the pixels into it - using Bitmap Bitmap.createBitmap (int width, int height, Bitmap.Config config) :
-	//, fd
-	//LOGD("creating new bitmap...");
-	jstring configName = env->NewStringUTF("ARGB_8888");
-	jclass bitmapConfigClass = env->FindClass("android/graphics/Bitmap$Config");
-	jmethodID valueOfBitmapConfigFunction = env->GetStaticMethodID(
-			bitmapConfigClass, "valueOf",
-			"(Ljava/lang/String;)Landroid/graphics/Bitmap$Config;");
-	jobject bitmapConfig = env->CallStaticObjectMethod(bitmapConfigClass,
-			valueOfBitmapConfigFunction, configName);
+	if (bitmap == NULL) {
+		jstring configName = env->NewStringUTF("ARGB_8888");
+		jclass bitmapConfigClass = env->FindClass("android/graphics/Bitmap$Config");
+		jmethodID valueOfBitmapConfigFunction = env->GetStaticMethodID(
+				bitmapConfigClass, "valueOf",
+				"(Ljava/lang/String;)Landroid/graphics/Bitmap$Config;");
+		jobject bitmapConfig = env->CallStaticObjectMethod(bitmapConfigClass,
+				valueOfBitmapConfigFunction, configName);
 
-	jclass bitmapCls = env->FindClass("android/graphics/Bitmap");
-	jmethodID createBitmapFunction = env->GetStaticMethodID(bitmapCls,
-			"createBitmap",
-			"(IILandroid/graphics/Bitmap$Config;)Landroid/graphics/Bitmap;");
-	jobject newBitmap = env->CallStaticObjectMethod(bitmapCls,
-			createBitmapFunction, jniBitmap->_bitmapInfo.width,
-			jniBitmap->_bitmapInfo.height, bitmapConfig);
+		jclass bitmapCls = env->FindClass("android/graphics/Bitmap");
+		jmethodID createBitmapFunction = env->GetStaticMethodID(bitmapCls,
+				"createBitmap",
+				"(IILandroid/graphics/Bitmap$Config;)Landroid/graphics/Bitmap;");
+		bitmap = env->CallStaticObjectMethod(bitmapCls,
+				createBitmapFunction, jniBitmap->_bitmapInfo.width,
+				jniBitmap->_bitmapInfo.height, bitmapConfig);
+	}
+
 	//
 	// putting the pixels into the new bitmap:
 	//
 	int ret;
 	void* bitmapPixels;
-	if ((ret = AndroidBitmap_lockPixels(env, newBitmap, &bitmapPixels)) < 0) {
+	if ((ret = AndroidBitmap_lockPixels(env, bitmap, &bitmapPixels)) < 0) {
 		LOGE("AndroidBitmap_lockPixels() failed ! error=%d", ret);
 		return NULL;
 	}
 	uint32_t* newBitmapPixels = (uint32_t*) bitmapPixels;
-	int pixelsCount = jniBitmap->_bitmapInfo.height
-			* jniBitmap->_bitmapInfo.width;
-	memcpy(newBitmapPixels, jniBitmap->_storedBitmapPixels,
-			sizeof(uint32_t) * pixelsCount);
-	AndroidBitmap_unlockPixels(env, newBitmap);
+	int pixelsCount = jniBitmap->_bitmapInfo.height * jniBitmap->_bitmapInfo.width;
+	memcpy(newBitmapPixels, jniBitmap->_storedBitmapPixels, sizeof(uint32_t) * pixelsCount);
+	AndroidBitmap_unlockPixels(env, bitmap);
 
-    ashmem_unpin_region(jniBitmap->_bitmapPixelsFd, 0, 0);
+	ashmem_unpin_region(jniBitmap->_bitmapPixelsFd, 0, 0);
 	//LOGD("returning the new bitmap");
-	return newBitmap;
+
+	return bitmap;
+}
+
+JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nativeGetImageData(
+		JNIEnv * env, jobject obj, jobject handle) {
+	return Java_de_thegerman_nativebitmapcache_AshmemBitmapCache_nativeGetImageDataInBitmap(env, obj, handle, NULL);
 }
 
 JNIEXPORT jobject JNICALL Java_de_thegerman_nativebitmapcache_NativeBitmapCache_nativeStoreImageData(
